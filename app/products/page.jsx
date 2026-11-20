@@ -13,7 +13,7 @@ export default function ProductsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  // Mengambil data produk dari PostgreSQL melalui API
+  // Mengambil data produk
   async function fetchProducts(keyword = "") {
     try {
       setLoading(true);
@@ -42,7 +42,7 @@ export default function ProductsPage() {
     }
   }
 
-  // Menjalankan pencarian produk
+  // Pencarian produk
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchProducts(search);
@@ -51,12 +51,11 @@ export default function ProductsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Menghapus varian produk
+  // Hapus varian produk
   async function handleDelete(variant) {
     const confirmed = window.confirm(
       `Yakin ingin menghapus varian ${variant.sku}?\n\n` +
-        "Varian hanya dapat dihapus jika stoknya 0 " +
-        "dan belum memiliki riwayat transaksi."
+        "Varian hanya dapat dihapus jika stok 0 dan belum memiliki riwayat transaksi."
     );
 
     if (!confirmed) return;
@@ -75,15 +74,15 @@ export default function ProductsPage() {
 
       if (!response.ok || !result.success) {
         throw new Error(
-          result.message || "Gagal menghapus varian produk."
+          result.message || "Gagal menghapus varian."
         );
       }
 
-      setMessage(
-        result.message || "Varian produk berhasil dihapus."
-      );
-
       await fetchProducts(search);
+
+      setMessage(
+        result.message || "Varian berhasil dihapus."
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -91,7 +90,7 @@ export default function ProductsPage() {
     }
   }
 
-  // Menggabungkan produk dan varian menjadi baris tabel
+  // Mengubah produk menjadi baris per varian
   const rows = products.flatMap((product) => {
     const variants = Array.isArray(product.variants)
       ? product.variants
@@ -107,29 +106,29 @@ export default function ProductsPage() {
     }));
   });
 
-  // Menghitung statistik produk
+  // Statistik persediaan
   const totalProducts = products.length;
 
   const totalVariants = products.reduce(
-    (total, product) =>
-      total + (product.variants?.length || 0),
+    (sum, product) =>
+      sum + (product.variants?.length || 0),
     0
   );
 
   const totalStock = products.reduce(
-    (total, product) =>
-      total +
+    (sum, product) =>
+      sum +
       (product.variants || []).reduce(
-        (sum, variant) =>
-          sum + Number(variant.current_stock || 0),
+        (total, variant) =>
+          total + Number(variant.current_stock || 0),
         0
       ),
     0
   );
 
   const attentionCount = products.reduce(
-    (total, product) =>
-      total +
+    (sum, product) =>
+      sum +
       (product.variants || []).filter(
         (variant) =>
           Number(variant.current_stock) <=
@@ -138,7 +137,6 @@ export default function ProductsPage() {
     0
   );
 
-  // Format harga rupiah
   function formatRupiah(value) {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
@@ -147,7 +145,6 @@ export default function ProductsPage() {
     }).format(Number(value || 0));
   }
 
-  // Menentukan status stok
   function getStockStatus(variant) {
     if (!variant) return "-";
 
@@ -162,7 +159,6 @@ export default function ProductsPage() {
     return "Aman";
   }
 
-  // Warna status stok
   function getStatusStyle(status) {
     if (status === "Habis") {
       return {
@@ -193,10 +189,8 @@ export default function ProductsPage() {
 
   return (
     <div className="flex min-h-screen bg-[#FFFBF8] text-[#49343A]">
-      {/* SIDEBAR DI SEBELAH KIRI */}
       <Sidebar />
 
-      {/* KONTEN DI SEBELAH KANAN */}
       <main className="min-w-0 flex-1 px-5 py-8 md:px-10">
         {/* HEADER */}
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
@@ -214,15 +208,25 @@ export default function ProductsPage() {
             </p>
           </div>
 
-          <Link
-            href="/products/add"
-            className="rounded-xl bg-[#713E4A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#5D303B]"
-          >
-            + Tambah Produk
-          </Link>
+          {/* TOMBOL TAMBAH PRODUK DAN VARIAN */}
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/products/variants/add"
+              className="rounded-xl border border-[#BD858B] bg-white px-5 py-3 text-sm font-semibold text-[#713E4A] transition hover:bg-[#F8EEEE]"
+            >
+              + Tambah Varian
+            </Link>
+
+            <Link
+              href="/products/add"
+              className="rounded-xl bg-[#713E4A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#5D303B]"
+            >
+              + Tambah Produk
+            </Link>
+          </div>
         </div>
 
-        {/* STATISTIK PRODUK */}
+        {/* STATISTIK */}
         <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             {
@@ -265,7 +269,7 @@ export default function ProductsPage() {
           ))}
         </div>
 
-        {/* DAFTAR PRODUK */}
+        {/* DAFTAR PERSEDIAAN */}
         <section className="overflow-hidden rounded-2xl border border-[#EEDFE0] bg-white">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EEDFE0] p-5">
             <div>
@@ -289,21 +293,20 @@ export default function ProductsPage() {
             />
           </div>
 
-          {/* NOTIFIKASI BERHASIL */}
+          {/* NOTIFIKASI */}
           {message && (
             <div className="mx-5 mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
               {message}
             </div>
           )}
 
-          {/* NOTIFIKASI ERROR */}
           {error && (
             <div className="mx-5 mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {error}
             </div>
           )}
 
-          {/* TABEL PRODUK */}
+          {/* TABEL */}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1050px] text-left text-sm">
               <thead className="bg-[#F8EEEE] text-xs uppercase tracking-wide text-[#713E4A]">
@@ -353,12 +356,10 @@ export default function ProductsPage() {
                         }
                         className="transition hover:bg-[#FFFBF8]"
                       >
-                        {/* SKU */}
                         <td className="px-5 py-4 font-medium text-[#713E4A]">
                           {variant?.sku || "-"}
                         </td>
 
-                        {/* NAMA PRODUK */}
                         <td className="px-5 py-4">
                           <p className="font-semibold">
                             {product.product_name}
@@ -369,12 +370,10 @@ export default function ProductsPage() {
                           </p>
                         </td>
 
-                        {/* KATEGORI */}
                         <td className="px-5 py-4">
                           {product.category_name || "-"}
                         </td>
 
-                        {/* VARIAN */}
                         <td className="px-5 py-4">
                           {variant
                             ? `${variant.size || "-"} / ${
@@ -383,26 +382,20 @@ export default function ProductsPage() {
                             : "-"}
                         </td>
 
-                        {/* HARGA */}
                         <td className="px-5 py-4">
-                          {formatRupiah(
-                            product.selling_price
-                          )}
+                          {formatRupiah(product.selling_price)}
                         </td>
 
-                        {/* STOK */}
                         <td className="px-5 py-4 font-semibold">
                           {Number(
                             variant?.current_stock || 0
                           ).toLocaleString("id-ID")}
                         </td>
 
-                        {/* LOKASI RAK */}
                         <td className="px-5 py-4">
                           {variant?.rack_location || "-"}
                         </td>
 
-                        {/* STATUS */}
                         <td className="px-5 py-4">
                           {variant && (
                             <span
@@ -414,7 +407,7 @@ export default function ProductsPage() {
                           )}
                         </td>
 
-                        {/* TOMBOL EDIT DAN HAPUS */}
+                        {/* EDIT DAN HAPUS */}
                         <td className="px-5 py-4">
                           {variant ? (
                             <div className="flex items-center justify-center gap-2">
@@ -431,13 +424,11 @@ export default function ProductsPage() {
                                   handleDelete(variant)
                                 }
                                 disabled={
-                                  deletingId ===
-                                  variant.id_variant
+                                  deletingId === variant.id_variant
                                 }
                                 className="rounded-lg border border-[#D9A1A8] px-3 py-2 text-xs font-semibold text-[#A64F5A] transition hover:bg-[#FBE5E5] disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                {deletingId ===
-                                variant.id_variant
+                                {deletingId === variant.id_variant
                                   ? "Menghapus..."
                                   : "Hapus"}
                               </button>
@@ -456,7 +447,6 @@ export default function ProductsPage() {
             </table>
           </div>
 
-          {/* FOOTER TABEL */}
           <div className="border-t border-[#EEDFE0] px-5 py-4 text-xs text-[#9A858A]">
             Menampilkan {rows.length} baris persediaan.
           </div>
