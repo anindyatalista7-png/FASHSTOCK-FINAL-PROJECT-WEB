@@ -1,48 +1,78 @@
+
+"use client";
+
+import { usePathname } from "next/navigation";
+
 const menus = [
-  { icon: "▦", label: "Dashboard", href: "/", active: true },
-  { icon: "◈", label: "Produk Fashion", href: "#produk" },
+  { icon: "▦", label: "Dashboard", href: "/" },
+  { icon: "◈", label: "Produk Fashion", href: "/products" },
   { icon: "▤", label: "Kategori", href: "#kategori" },
   { icon: "⇄", label: "Transaksi", href: "#transaksi" },
-  { icon: "▣", label: "Restock", href: "#restock" },
-  { icon: "♙", label: "Supplier", href: "#supplier" },
+  { icon: "▥", label: "Restock", href: "#restock" },
+  { icon: "♧", label: "Supplier", href: "#supplier" },
 ];
 
 export default function Sidebar() {
+  const pathname = usePathname();
+
   return (
-    <aside className="flex min-h-screen w-64 shrink-0 flex-col border-r border-[#F0DDDE] bg-white px-5 py-7">
-      <a href="/" className="mb-10 flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#713E4A] text-sm font-extrabold tracking-tight text-white shadow-sm">
-          FS
-        </span>
-        <span>
-          <span className="block text-xl font-extrabold tracking-tight text-[#713E4A]">FashStock</span>
-          <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.15em] text-[#A18489]">Fashion Warehouse</span>
-        </span>
+    <aside className="flex min-h-screen w-64 shrink-0 flex-col bg-[#713E4A] px-5 py-8 text-white">
+      {/* Brand */}
+      <a href="/" className="mb-14 flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center border border-white/30 text-xl font-semibold tracking-tight">
+          F.
+        </div>
+
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">
+            FashStock
+          </h2>
+          <p className="mt-1 text-[9px] uppercase tracking-[0.25em] text-[#E8C7C8]">
+            Fashion Warehouse
+          </p>
+        </div>
       </a>
 
-      <p className="mb-3 px-3 text-[10px] font-bold tracking-[0.18em] text-[#B49DA1]">WORKSPACE</p>
-      <nav className="space-y-1.5">
-        {menus.map((menu) => (
-          <a
-            key={menu.label}
-            href={menu.href}
-            aria-current={menu.active ? "page" : undefined}
-            className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition ${
-              menu.active
-                ? "bg-[#713E4A] text-white shadow-sm"
-                : "text-[#806B70] hover:bg-[#F8EEEE] hover:text-[#713E4A]"
-            }`}
-          >
-            <span className="w-5 text-center text-base">{menu.icon}</span>
-            <span>{menu.label}</span>
-          </a>
-        ))}
+      {/* Navigation */}
+      <p className="mb-5 px-3 text-[10px] uppercase tracking-[0.24em] text-[#D6AEB4]">
+        Workspace
+      </p>
+
+      <nav className="space-y-2">
+        {menus.map((menu) => {
+          const active = pathname === menu.href;
+
+          return (
+            <a
+              key={menu.label}
+              href={menu.href}
+              className={`flex items-center gap-4 border-l-2 px-4 py-3.5 text-sm transition ${
+                active
+                  ? "border-[#F5D8D9] bg-white/10 font-semibold text-white"
+                  : "border-transparent text-[#E6C8CD] hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <span className="w-5 text-center text-lg">
+                {menu.icon}
+              </span>
+              <span>{menu.label}</span>
+            </a>
+          );
+        })}
       </nav>
 
-      <div className="mt-auto rounded-2xl bg-[#F8EEEE] p-4">
-        <p className="text-xs font-bold text-[#713E4A]">Smart Stock. Better Style.</p>
-        <p className="mt-1.5 text-[11px] leading-5 text-[#927D82]">
-          Kelola persediaan fashion dengan lebih teratur.
+      {/* Bottom section */}
+      <div className="mt-auto border-t border-white/20 pt-6">
+        <p className="font-serif text-lg italic text-[#F7E7E7]">
+          Smart Stock.
+        </p>
+        <p className="font-serif text-lg italic text-[#F7E7E7]">
+          Better Style.
+        </p>
+
+        <p className="mt-4 text-[10px] leading-5 tracking-wide text-[#D6AEB4]">
+          FASHSTOCK © 2026
+          <span className="block">Inventory Management</span>
         </p>
       </div>
     </aside>
