@@ -1,78 +1,89 @@
 
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const menus = [
-  { icon: "▦", label: "Dashboard", href: "/" },
-  { icon: "◈", label: "Produk Fashion", href: "/products" },
-  { icon: "▤", label: "Kategori", href: "#kategori" },
-  { icon: "⇄", label: "Transaksi", href: "#transaksi" },
-  { icon: "▥", label: "Restock", href: "#restock" },
-  { icon: "♧", label: "Supplier", href: "#supplier" },
+const menuItems = [
+  { label: "Dashboard", href: "/", icon: "▦" },
+  { label: "Produk Fashion", href: "/products", icon: "◈" },
+  { label: "Kategori Produk", href: "/categories", icon: "▤" },
+  { label: "Transaksi Stok", href: "/transactions", icon: "⇄" },
+  { label: "Restock Produk", href: "/restock", icon: "↻" },
+  { label: "Supplier", href: "/suppliers", icon: "♧" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex min-h-screen w-64 shrink-0 flex-col bg-[#713E4A] px-5 py-8 text-white">
-      {/* Brand */}
-      <a href="/" className="mb-14 flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center border border-white/30 text-xl font-semibold tracking-tight">
-          F.
+    <aside className="flex min-h-screen w-64 shrink-0 flex-col bg-[#713E4A] text-white">
+      {/* LOGO DAN BRAND */}
+      <div className="border-b border-white/15 px-5 pb-8 pt-9">
+        <Link href="/" className="flex items-center gap-3">
+          <div className="flex h-[70px] w-[70px] shrink-0 items-center justify-center overflow-hidden border border-[#E8C7C8] bg-[#F8EEEE] p-2 shadow-sm">
+            <img
+              src="/images/logo-fashstock.png"
+              alt="Logo FashStock"
+              className="h-full w-full object-contain"
+            />
+          </div>
+
+          <div className="min-w-0">
+            <h1 className="text-[25px] font-semibold tracking-[-0.05em] text-white">
+              FashStock
+            </h1>
+
+            <p className="mt-2 text-[9px] font-medium uppercase tracking-[0.15em] text-[#F2CDD2]">
+              Fashion Warehouse
+            </p>
+          </div>
+        </Link>
+      </div>
+
+      {/* NAVIGASI */}
+      <nav className="flex-1 px-4 py-8">
+        <p className="mb-5 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#E8B9C2]">
+          Menu Utama
+        </p>
+
+        <div className="space-y-2">
+          {menuItems.map((item) => {
+            const active =
+              item.href === "/"
+                ? pathname === "/"
+                : pathname === item.href ||
+                  pathname.startsWith(item.href + "/");
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-4 border-l-[3px] px-4 py-3.5 text-[13px] transition-all duration-200 ${
+                  active
+                    ? "border-[#F8EEEE] bg-white/15 font-semibold text-white"
+                    : "border-transparent text-[#F0D8DC] hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <span className="flex w-5 items-center justify-center text-lg">
+                  {item.icon}
+                </span>
+
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </div>
-
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">
-            FashStock
-          </h2>
-          <p className="mt-1 text-[9px] uppercase tracking-[0.25em] text-[#E8C7C8]">
-            Fashion Warehouse
-          </p>
-        </div>
-      </a>
-
-      {/* Navigation */}
-      <p className="mb-5 px-3 text-[10px] uppercase tracking-[0.24em] text-[#D6AEB4]">
-        Workspace
-      </p>
-
-      <nav className="space-y-2">
-        {menus.map((menu) => {
-          const active = pathname === menu.href;
-
-          return (
-            <a
-              key={menu.label}
-              href={menu.href}
-              className={`flex items-center gap-4 border-l-2 px-4 py-3.5 text-sm transition ${
-                active
-                  ? "border-[#F5D8D9] bg-white/10 font-semibold text-white"
-                  : "border-transparent text-[#E6C8CD] hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <span className="w-5 text-center text-lg">
-                {menu.icon}
-              </span>
-              <span>{menu.label}</span>
-            </a>
-          );
-        })}
       </nav>
 
-      {/* Bottom section */}
-      <div className="mt-auto border-t border-white/20 pt-6">
-        <p className="font-serif text-lg italic text-[#F7E7E7]">
-          Smart Stock.
-        </p>
-        <p className="font-serif text-lg italic text-[#F7E7E7]">
-          Better Style.
+      {/* FOOTER */}
+      <div className="border-t border-white/15 px-6 py-6">
+        <p className="font-serif text-sm italic text-[#F2CDD2]">
+          Smart Stock. Better Style.
         </p>
 
-        <p className="mt-4 text-[10px] leading-5 tracking-wide text-[#D6AEB4]">
-          FASHSTOCK © 2026
-          <span className="block">Inventory Management</span>
+        <p className="mt-3 text-[10px] tracking-wide text-[#D9B8BE]">
+          © 2026 FashStock
         </p>
       </div>
     </aside>

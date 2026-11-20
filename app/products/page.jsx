@@ -1,312 +1,440 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import Sidebar from "../../components/Sidebar";
-
-function StockBadge({ status }) {
-  const styles = {
-    Normal: "bg-[#EAF3EC] text-[#477052]",
-    Low: "bg-[#FFF1D9] text-[#93651F]",
-    Severe: "bg-[#F9E4E5] text-[#A64F5A]",
-    "Out of Stock": "bg-[#F0ECEC] text-[#77696C]",
-  };
-
-  return (
-    <span
-      className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-bold ${
-        styles[status] || "bg-slate-100 text-slate-600"
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function fetchProducts() {
+  // Mengambil daftar produk dari API PostgreSQL
+  async function fetchProducts(keyword = "") {
+    try {
       setLoading(true);
       setError("");
 
-      try {
-        const response = await fetch(
-          `/api/products?q=${encodeURIComponent(search)}`
+      const response = await fetch(
+        `/api/products?q=${encodeURIComponent(keyword)}`,
+        { cache: "no-store" }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || "Gagal mengambil data produk."
         );
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.message || "Gagal mengambil produk.");
-        }
-
-        if (isMounted) {
-          setProducts(result.data);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err.message);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
       }
+
+      setProducts(Array.isArray(result.data) ? result.data : []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    fetchProducts();
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProducts(search);
+    }, 300);
 
-    return () => {
-      isMounted = false;
-    };
+    return () => clearTimeout(timer);
   }, [search]);
 
-  const totalVariants = products.reduce(
-    (total, product) => total + Number(product.variant_count),
-    0
-  );
+  // Menghapus varian produk melalui API
+  async function handleDelete(variant) {
+    const confirmed = window.confirm(
+      `Yakin ingin menghapus varian ${variant.sku}?\n\n` +
+      "Varian hanya dapat dihapus jika stoknya 0 " +
+      "dan belum memiliki riwayat transaksi."
+    );
 
-  const totalStock = products.reduce(
-    (total, product) => total + Number(product.total_stock),
-    0
-  );
+    if (!confirmed) return;
 
-  const attentionProducts = products.filter(
-    (product) => product.stock_status !== "Normal"
-  ).length;
+    try {
+      setDeletingId(variant.id_variant);
+      setMessage("");
+      setError("");
+
+      const response = await fetch(
+        `/api/variants/${variant.id_variant}/delete`,
+        { method: "DELETE" }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || "Gagal menghapus varian produk."
+        );
+      }
+
+      setMessage(
+        result.message || "Varian produk berhasil dihapus."
+      );
+
+      await fetchProducts(search);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  // Menggabungkan produk dan variannya untuk ditampilkan
+  const rows = products.flatMap((product) => {
+    const variants = Array.isArray(product.variants)
+      ? product.variants
+      : [];
+
+    if (variants.length === 0) {
+      return [
+        {
+          product,
+          variant: null,
+        },
+      ];
+    }
+
+    return variants.map((variant) => ({
+      product,
+      variant,
+    }));
+  });
+
+  // Menghitung statistik persediaan
+  const totalProducts = products.length;
+
+  const totalVariants = products.reduce((total, product) => {
+    return total + (product.variants?.length || 0);
+  }, 0);
+
+  const totalStock = products.reduce((total, product) => {
+    return (
+      total +
+      (product.variants || []).reduce(
+        (sum, variant) => sum + Number(variant.current_stock || 0),
+        0
+      )
+    );
+  }, 0);
+
+  const attentionCount = products.reduce((total, product) => {
+    return (
+      total +
+      (product.variants || []).filter(
+        (variant) =>
+          Number(variant.current_stock) <=
+          Number(variant.low_stock)
+      ).length
+    );
+  }, 0);
+
+  function formatRupiah(value) {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(Number(value || 0));
+  }
+
+  function getStockStatus(variant) {
+    if (!variant) return "-";
+
+    const stock = Number(variant.current_stock || 0);
+    const minimum = Number(variant.minimum_stock || 0);
+    const low = Number(variant.low_stock || 0);
+
+    if (stock === 0) return "Habis";
+    if (stock <= minimum) return "Kritis";
+    if (stock <= low) return "Menipis";
+
+    return "Aman";
+  }
+
+  function getStatusStyle(status) {
+    if (status === "Habis") {
+      return {
+        background: "#FBE5E5",
+        color: "#A23E48",
+      };
+    }
+
+    if (status === "Kritis") {
+      return {
+        background: "#F8E3E6",
+        color: "#9C4454",
+      };
+    }
+
+    if (status === "Menipis") {
+      return {
+        background: "#FFF0DC",
+        color: "#966321",
+      };
+    }
+
+    return {
+      background: "#E7F2E9",
+      color: "#34714C",
+    };
+  }
 
   return (
-    <main className="flex min-h-screen bg-[#F8EEEE]">
-      <Sidebar active="products" />
+    <div className="min-h-screen bg-[#FFFBF8] text-[#49343A]">
+      <Sidebar />
 
-      <section className="min-w-0 flex-1 px-5 py-7 md:px-8 lg:px-10">
-        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+      <main className="min-h-screen px-5 py-8 md:ml-64 md:px-10">
+        {/* Header halaman */}
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#BD858B]">
-              FASHSTOCK / INVENTORY
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#BD858B]">
+              FashStock / Inventaris
             </p>
 
-            <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-[#49343A] md:text-3xl">
-              Produk Fashion
+            <h1 className="font-serif text-3xl font-semibold text-[#713E4A] md:text-4xl">
+              Manajemen Produk
             </h1>
 
-            <p className="mt-1.5 text-sm text-[#927D82]">
-              Kelola produk dan persediaan fashion di gudang.
+            <p className="mt-2 text-sm text-[#8A7479]">
+              Kelola produk fashion, varian, dan persediaan gudang.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-[#F0DDDE] bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs font-bold text-[#713E4A]">
-              Smart Stock. Better Style.
-            </p>
-            <p className="mt-1 text-[10px] text-[#A18489]">
-              Fashion Warehouse Management
-            </p>
-          </div>
-        </header>
+          <Link
+            href="/products/add"
+            className="rounded-xl bg-[#713E4A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#5D303B]"
+          >
+            + Tambah Produk
+          </Link>
+        </div>
 
-        {/* Ringkasan produk */}
-        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Statistik produk */}
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             {
               label: "Total Produk",
-              value: products.length,
-              icon: "▦",
+              value: totalProducts,
+              note: "Jenis produk fashion",
             },
             {
               label: "Total Varian",
               value: totalVariants,
-              icon: "◈",
+              note: "SKU terdaftar",
             },
             {
               label: "Total Stok",
-              value: totalStock.toLocaleString("id-ID"),
-              icon: "▣",
+              value: totalStock,
+              note: "Unit persediaan",
             },
             {
               label: "Perlu Perhatian",
-              value: attentionProducts,
-              icon: "!",
+              value: attentionCount,
+              note: "Stok rendah atau habis",
             },
-          ].map((item, index) => (
-            <article
-              key={item.label}
-              className="rounded-2xl border border-[#F0DDDE] bg-white p-5 shadow-[0_5px_20px_rgba(113,62,74,0.04)]"
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-2xl border border-[#EEDFE0] bg-white p-5"
             >
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-[#927D82]">
-                  {item.label}
-                </p>
-
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F8EEEE] text-lg font-bold text-[#713E4A]">
-                  {item.icon}
-                </span>
-              </div>
-
-              <p className="my-3 text-3xl font-extrabold text-[#713E4A]">
-                {item.value}
+              <p className="text-sm text-[#8A7479]">
+                {stat.label}
               </p>
-            </article>
+
+              <h2 className="mt-3 font-serif text-3xl font-semibold text-[#713E4A]">
+                {stat.value.toLocaleString("id-ID")}
+              </h2>
+
+              <p className="mt-2 text-xs text-[#A18D91]">
+                {stat.note}
+              </p>
+            </div>
           ))}
         </div>
 
-        {/* Tabel produk */}
-        <section className="overflow-hidden rounded-2xl border border-[#F0DDDE] bg-white shadow-[0_5px_20px_rgba(113,62,74,0.04)]">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#F5E9E9] p-5">
+        {/* Daftar produk */}
+        <section className="overflow-hidden rounded-2xl border border-[#EEDFE0] bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#EEDFE0] p-5">
             <div>
-              <h2 className="font-extrabold text-[#49343A]">
+              <h2 className="font-serif text-xl font-semibold text-[#713E4A]">
                 Daftar Persediaan
               </h2>
-              <p className="mt-1 text-xs text-[#A18D91]">
-                Data produk yang tersimpan di PostgreSQL.
+
+              <p className="mt-1 text-xs text-[#9A858A]">
+                Data produk dan varian dari PostgreSQL
               </p>
             </div>
 
-            <div className="w-full sm:w-72">
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Cari nama, kategori, atau SKU..."
-                className="w-full rounded-xl border border-[#E8C7C8] bg-[#FFFBFA] px-4 py-2.5 text-xs text-[#49343A] outline-none transition placeholder:text-[#B49DA1] focus:border-[#713E4A] focus:ring-2 focus:ring-[#F8EEEE]"
-              />
-            </div>
+            <input
+              type="text"
+              placeholder="Cari produk atau SKU..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="w-full rounded-xl border border-[#EEDFE0] bg-[#FFFBF8] px-4 py-3 text-sm outline-none focus:border-[#BD858B] sm:w-72"
+            />
           </div>
 
-          {loading ? (
-            <div className="p-12 text-center text-sm text-[#927D82]">
-              Memuat data produk...
-            </div>
-          ) : error ? (
-            <div className="m-5 rounded-xl bg-[#F9E4E5] p-5 text-sm text-[#A64F5A]">
-              <p className="font-bold">Data belum berhasil dimuat.</p>
-              <p className="mt-1">{error}</p>
-              <p className="mt-2 text-xs">
-                Periksa koneksi database dan konfigurasi .env.local.
-              </p>
-            </div>
-          ) : products.length === 0 ? (
-            <div className="p-12 text-center">
-              <p className="font-bold text-[#713E4A]">
-                Produk tidak ditemukan.
-              </p>
-              <p className="mt-1 text-xs text-[#A18D91]">
-                Coba gunakan kata kunci pencarian yang berbeda.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-sm">
-                <thead className="bg-[#FFF8F7] text-[10px] font-bold uppercase tracking-wider text-[#9B858A]">
-                  <tr>
-                    <th className="px-5 py-4">Produk</th>
-                    <th className="px-5 py-4">Kategori</th>
-                    <th className="px-5 py-4">Varian / SKU</th>
-                    <th className="px-5 py-4">Total Stok</th>
-                    <th className="px-5 py-4">Lokasi Rak</th>
-                    <th className="px-5 py-4">Status</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {products.map((product) => (
-                    <tr
-                      key={product.id_product}
-                      className="border-t border-[#F5EEEE] transition hover:bg-[#FFFBFA]"
-                    >
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          {product.image_url ? (
-                            <img
-                              src={product.image_url}
-                              alt={product.product_name}
-                              className="h-12 w-12 rounded-xl border border-[#F0DDDE] object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F8EEEE] text-xl text-[#BD858B]">
-                              ◈
-                            </div>
-                          )}
-
-                          <div>
-                            <p className="font-bold text-[#49343A]">
-                              {product.product_name}
-                            </p>
-                            <p className="mt-1 text-[10px] text-[#A18D91]">
-                              {product.variant_count} varian
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-4 text-xs text-[#806B70]">
-                        {product.category_name}
-                      </td>
-
-                      <td className="max-w-[240px] px-5 py-4">
-                        <div className="space-y-1.5">
-                          {product.variants.map((variant) => (
-                            <div
-                              key={variant.id_variant}
-                              className="text-[10px] text-[#806B70]"
-                            >
-                              <span className="font-bold text-[#713E4A]">
-                                {variant.sku}
-                              </span>
-                              <span>
-                                {" "}· {variant.size} · {variant.color}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-4 font-bold text-[#49343A]">
-                        {Number(product.total_stock).toLocaleString("id-ID")}{" "}
-                        <span className="text-[10px] font-normal text-[#A18D91]">
-                          {product.unit}
-                        </span>
-                      </td>
-
-                      <td className="px-5 py-4">
-                        <div className="space-y-1">
-                          {product.variants.map((variant) => (
-                            <p
-                              key={variant.id_variant}
-                              className="text-[10px] text-[#806B70]"
-                            >
-                              {variant.rack_location || "-"}
-                            </p>
-                          ))}
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-4">
-                        <StockBadge status={product.stock_status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Notifikasi */}
+          {message && (
+            <div className="mx-5 mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+              {message}
             </div>
           )}
 
-          <div className="border-t border-[#F5EEEE] px-5 py-3 text-[10px] text-[#A18D91]">
-            Menampilkan {products.length} produk dari database FashStock.
+          {error && (
+            <div className="mx-5 mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {/* Tabel produk */}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1050px] text-left text-sm">
+              <thead className="bg-[#F8EEEE] text-xs uppercase tracking-wide text-[#713E4A]">
+                <tr>
+                  <th className="px-5 py-4">SKU</th>
+                  <th className="px-5 py-4">Nama Produk</th>
+                  <th className="px-5 py-4">Kategori</th>
+                  <th className="px-5 py-4">Varian</th>
+                  <th className="px-5 py-4">Harga Jual</th>
+                  <th className="px-5 py-4">Stok</th>
+                  <th className="px-5 py-4">Lokasi</th>
+                  <th className="px-5 py-4">Status</th>
+                  <th className="px-5 py-4 text-center">
+                    Aksi
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-[#F2E7E8]">
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={9}
+                      className="px-5 py-12 text-center text-[#9A858A]"
+                    >
+                      Memuat data produk...
+                    </td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={9}
+                      className="px-5 py-12 text-center text-[#9A858A]"
+                    >
+                      Belum ada produk yang ditemukan.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map(({ product, variant }) => {
+                    const status = getStockStatus(variant);
+
+                    return (
+                      <tr
+                        key={
+                          variant?.id_variant ||
+                          `product-${product.id_product}`
+                        }
+                        className="transition hover:bg-[#FFFBF8]"
+                      >
+                        <td className="px-5 py-4 font-medium text-[#713E4A]">
+                          {variant?.sku || "-"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <p className="font-semibold">
+                            {product.product_name}
+                          </p>
+
+                          <p className="mt-1 text-xs text-[#A18D91]">
+                            {product.unit || "pcs"}
+                          </p>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {product.category_name || "-"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {variant
+                            ? `${variant.size || "-"} / ${variant.color || "-"}`
+                            : "-"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {formatRupiah(product.selling_price)}
+                        </td>
+
+                        <td className="px-5 py-4 font-semibold">
+                          {Number(
+                            variant?.current_stock || 0
+                          ).toLocaleString("id-ID")}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {variant?.rack_location || "-"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {variant && (
+                            <span
+                              className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+                              style={getStatusStyle(status)}
+                            >
+                              {status}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Tombol Edit dan Hapus */}
+                        <td className="px-5 py-4">
+                          {variant ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <Link
+                                href={`/products/edit/${variant.id_variant}`}
+                                className="rounded-lg border border-[#BD858B] px-3 py-2 text-xs font-semibold text-[#713E4A] transition hover:bg-[#F8EEEE]"
+                              >
+                                Edit
+                              </Link>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(variant)}
+                                disabled={
+                                  deletingId === variant.id_variant
+                                }
+                                className="rounded-lg border border-[#D9A1A8] px-3 py-2 text-xs font-semibold text-[#A64F5A] transition hover:bg-[#FBE5E5] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {deletingId === variant.id_variant
+                                  ? "Menghapus..."
+                                  : "Hapus"}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[#A18D91]">
+                              Tidak ada varian
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="border-t border-[#EEDFE0] px-5 py-4 text-xs text-[#9A858A]">
+            Menampilkan {rows.length} baris persediaan.
           </div>
         </section>
-
-        <footer className="mt-8 text-center text-[10px] tracking-wide text-[#B49DA1]">
-          FashStock · Smart Stock. Better Style.
-        </footer>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
