@@ -17,6 +17,7 @@
   --border: #EEDFE0;
 }
 
+/* Pengaturan dasar */
 * {
   box-sizing: border-box;
 }
@@ -27,6 +28,7 @@ html {
 
 body {
   margin: 0;
+  min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
   font-family: "Segoe UI", Arial, sans-serif;
@@ -34,7 +36,6 @@ body {
 }
 
 /* Typography */
-
 h1,
 h2,
 h3 {
@@ -49,7 +50,6 @@ h3 {
 }
 
 /* Cards */
-
 .editorial-card {
   background: #FFFFFF;
   border: 1px solid #EEDFE0;
@@ -58,7 +58,6 @@ h3 {
 }
 
 /* Tables */
-
 table {
   border-collapse: collapse;
 }
@@ -83,7 +82,6 @@ tbody tr:hover {
 }
 
 /* Form elements */
-
 input,
 select,
 textarea {
