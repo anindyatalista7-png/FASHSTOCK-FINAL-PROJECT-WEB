@@ -71,9 +71,9 @@ export async function createTransaction(type, prevState, formData) {
     restockId = intOrNull(values.restock_order_id);
     if (Number.isNaN(restockId)) restockId = null;
     if (restockId) {
-      const order = await queryOne("SELECT id, supplier_id, status FROM restock_orders WHERE id = $1", [restockId]);
+      const order = await queryOne("SELECT id, supplier_id, status, inspection_result FROM restock_orders WHERE id = $1", [restockId]);
       if (!order) e.restock_order_id = "Restock Order tidak ditemukan.";
-      else if (order.status !== "Received") e.restock_order_id = "Hanya Restock Order berstatus Received yang dapat dipilih.";
+      else if (order.status !== "Received" && !(order.status === "Inspecting" && order.inspection_result === "Passed")) e.restock_order_id = "PO harus sudah lolos pemeriksaan.";
       else {
         const used = await queryOne(
           "SELECT trx_number FROM transactions WHERE restock_order_id = $1 AND status <> 'Rejected'",
@@ -104,6 +104,12 @@ export async function createTransaction(type, prevState, formData) {
     newId = await withTransaction(async (client) => {
       const map = await loadProducts(client, items);
       if (type === "OUT") checkStock(items, map);
+      if (type === "IN" && restockId) {
+        const { rows: orders } = await client.query("SELECT status, inspection_result FROM restock_orders WHERE id = $1 FOR UPDATE", [restockId]);
+        if (!orders[0] || !(orders[0].status === "Received" || (orders[0].status === "Inspecting" && orders[0].inspection_result === "Passed"))) throw new UserError("PO belum lolos pemeriksaan.");
+        const { rows: poItems } = await client.query("SELECT product_id, quantity FROM restock_order_items WHERE restock_order_id = $1", [restockId]);
+        if (poItems.length !== items.length || poItems.some(i => !items.some(t => t.productId === i.product_id && t.quantity === i.quantity))) throw new UserError("Produk dan jumlah Barang Masuk harus sama dengan PO. Jika tidak sesuai, buat laporan pemeriksaan.");
+      }
 
       // Nomor transaksi otomatis: IN-YYYYMMDD-00001 / OUT-YYYYMMDD-00001
       const { rows: seq } = await client.query(
@@ -220,7 +226,7 @@ export async function approveTransaction(id, prevState, formData) {
   let trxNumber;
   try {
     trxNumber = await withTransaction(async (client) => {
-      const { rows } = await client.query("SELECT id, trx_number, type, status FROM transactions WHERE id = $1 FOR UPDATE", [id]);
+      const { rows } = await client.query("SELECT id, trx_number, type, status, restock_order_id FROM transactions WHERE id = $1 FOR UPDATE", [id]);
       const trx = rows[0];
       if (!trx) throw new UserError("Transaksi tidak ditemukan.");
       if (trx.status !== "Pending") throw new UserError(`Transaksi sudah berstatus ${trx.status}.`);
@@ -234,16 +240,21 @@ export async function approveTransaction(id, prevState, formData) {
       );
       if (items.length === 0) throw new UserError("Transaksi tidak memiliki item.");
 
-      for (const it of items) {
-        if (trx.type === "IN") {
+      if (trx.type === "IN" && trx.restock_order_id) {
+        const { rows: orders } = await client.query("SELECT status, inspection_result FROM restock_orders WHERE id = $1 FOR UPDATE", [trx.restock_order_id]);
+        if (!orders[0] || !(orders[0].status === "Received" || (orders[0].status === "Inspecting" && orders[0].inspection_result === "Passed"))) throw new UserError("PO belum lolos pemeriksaan.");
+        const { rows: poItems } = await client.query("SELECT product_id, quantity FROM restock_order_items WHERE restock_order_id = $1", [trx.restock_order_id]);
+        if (poItems.length !== items.length || poItems.some(i => !items.some(t => t.product_id === i.product_id && t.quantity === i.quantity))) throw new UserError("Item Barang Masuk tidak sama dengan PO. Approval dibatalkan.");
+      }
+      if (trx.type === "IN") {
+        for (const it of items) {
           await client.query("UPDATE products SET stock = stock + $1 WHERE id = $2", [it.quantity, it.product_id]);
-        } else {
-          const res = await client.query(
-            "UPDATE products SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING stock",
-            [it.quantity, it.product_id]
-          );
-          if (res.rowCount === 0) {
-            throw new UserError(`Stok ${it.name} tidak mencukupi untuk mengeluarkan ${it.quantity} ${it.unit}. Approval dibatalkan.`);
+        }
+      } else {
+        for (const it of items) {
+          const { rows: available } = await client.query("SELECT stock FROM products WHERE id = $1", [it.product_id]);
+          if (!available.length || available[0].stock < it.quantity) {
+            throw new UserError(`Stok ${it.name} tidak mencukupi untuk ${it.quantity} ${it.unit}. Approval dibatalkan.`);
           }
         }
       }
@@ -251,14 +262,20 @@ export async function approveTransaction(id, prevState, formData) {
         "UPDATE transactions SET status = 'Approved', reviewed_by = $1, reviewed_at = NOW(), reject_reason = NULL WHERE id = $2",
         [user.id, id]
       );
+      if (trx.type === "IN" && trx.restock_order_id) {
+        const { rows: changed } = await client.query("UPDATE restock_orders SET status = 'Received', status_note = NULL WHERE id = $1 AND status IN ('Inspecting', 'Received') RETURNING id", [trx.restock_order_id]);
+        if (!changed.length) throw new UserError("Status PO berubah, approval dibatalkan.");
+        await client.query("INSERT INTO restock_status_logs (restock_order_id, status, note, changed_by) VALUES ($1, 'Received', $2, $3)", [trx.restock_order_id, `Barang Masuk ${trx.trx_number} disetujui`, user.id]);
+      }
       return trx.trx_number;
     });
   } catch (err) {
     return fail(err instanceof UserError ? err.message : dbErrorMessage(err));
   }
   refresh(id);
+  revalidatePath("/restock");
   const back = formData?.get?.("redirect_to") === "dashboard" ? "/dashboard" : `/transactions/${id}`;
-  redirect(withMsg(back, `Transaksi ${trxNumber} di-approve. Stok telah diperbarui.`));
+  redirect(withMsg(back, `Transaksi ${trxNumber} di-approve. Stok barang masuk diperbarui; stok barang keluar berkurang saat Shipped.`));
 }
 
 /* --------------------------------------------------------------------- */
@@ -295,17 +312,41 @@ export async function rejectTransaction(id, prevState, formData) {
 
 export async function markShipped(id) {
   try {
-    await assertRole(["staff", "manager"]);
+    await assertRole(["staff"]);
   } catch (err) {
     return fail(err.message);
   }
-  const { rows } = await query(
-    `UPDATE transactions SET status = 'Shipped', shipped_at = NOW()
-      WHERE id = $1 AND type = 'OUT' AND status = 'Approved'
-      RETURNING trx_number`,
-    [id]
-  );
-  if (rows.length === 0) return fail("Hanya barang keluar berstatus Approved yang dapat ditandai Shipped.");
+  let trxNumber;
+  try {
+    trxNumber = await withTransaction(async (client) => {
+      const { rows } = await client.query(
+        "SELECT id, trx_number, status, out_stock_deducted FROM transactions WHERE id = $1 AND type = 'OUT' FOR UPDATE",
+        [id]
+      );
+      const trx = rows[0];
+      if (!trx || trx.status !== "Approved") throw new UserError("Hanya barang keluar berstatus Approved yang dapat ditandai Shipped.");
+      const { rows: items } = await client.query(
+        `SELECT i.product_id, i.quantity, p.name, p.unit
+           FROM transaction_items i JOIN products p ON p.id = i.product_id
+          WHERE i.transaction_id = $1 ORDER BY i.product_id`,
+        [id]
+      );
+      if (!items.length) throw new UserError("Transaksi tidak memiliki item.");
+      if (!trx.out_stock_deducted) {
+        for (const it of items) {
+          const result = await client.query(
+            "UPDATE products SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING stock",
+            [it.quantity, it.product_id]
+          );
+          if (result.rowCount !== 1) throw new UserError(`Stok ${it.name} tidak mencukupi untuk mengirim ${it.quantity} ${it.unit}.`);
+        }
+      }
+      await client.query("UPDATE transactions SET status = 'Shipped', shipped_at = NOW(), out_stock_deducted = TRUE WHERE id = $1", [id]);
+      return trx.trx_number;
+    });
+  } catch (err) {
+    return fail(err instanceof UserError ? err.message : dbErrorMessage(err));
+  }
   refresh(id);
-  redirect(withMsg(`/transactions/${id}`, `Transaksi ${rows[0].trx_number} ditandai Shipped.`));
+  redirect(withMsg(`/transactions/${id}`, `Transaksi ${trxNumber} ditandai Shipped. Stok telah dikurangi.`));
 }

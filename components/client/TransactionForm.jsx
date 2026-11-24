@@ -103,7 +103,7 @@ export default function TransactionForm({
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-stone-500">
-                  {poLoading ? "Memuat data PO..." : receivedOrders.length === 0 ? "Tidak ada Restock Order berstatus Received yang tersedia." : "Hanya PO berstatus Received yang belum dipakai."}
+                  {poLoading ? "Memuat data PO..." : receivedOrders.length === 0 ? "Tidak ada PO yang siap dicatat sebagai Barang Masuk." : "Pilih PO yang telah lolos pemeriksaan dan belum dipakai."}
                 </p>
                 {poError && <p className="mt-1 text-xs font-medium text-red-600">{poError}</p>}
                 {err("restock_order_id")}

@@ -40,7 +40,7 @@ export default async function TransactionDetailPage({ params }) {
   const isOwner = trx.created_by === user.id;
   const canEdit = pending && (user.role === "manager" || (user.role === "staff" && isOwner));
   const canReview = pending && user.role === "manager";
-  const canShip = !isIn && trx.status === "Approved" && ["staff", "manager"].includes(user.role);
+  const canShip = !isIn && trx.status === "Approved" && user.role === "staff";
   const totalQty = trx.items.reduce((s, i) => s + i.quantity, 0);
   const totalValue = trx.items.reduce((s, i) => s + i.quantity * (isIn ? i.purchase_price : i.selling_price), 0);
   const insufficient = !isIn && pending && trx.items.some((i) => i.quantity > i.stock);
@@ -88,13 +88,13 @@ export default async function TransactionDetailPage({ params }) {
               <div>
                 <p className="font-bold text-amber-900">Menunggu persetujuan Anda</p>
                 <p className="text-sm text-amber-800">
-                  Approve akan {isIn ? "menambah" : "mengurangi"} stok {trx.items.length} produk (total {num(totalQty)} unit) secara otomatis dalam satu proses.
+                  {isIn ? `Approve akan menambah stok ${trx.items.length} produk (total ${num(totalQty)} unit).` : `Approve menyetujui transaksi ${trx.items.length} produk (total ${num(totalQty)} unit). Stok berkurang saat Staff menandai Shipped.`}
                 </p>
                 {insufficient && <p className="mt-1 text-sm font-semibold text-red-700">Perhatian: ada produk yang stoknya kini tidak mencukupi.</p>}
               </div>
             </div>
             <div className="flex flex-wrap items-start gap-2 lg:max-w-md lg:justify-end">
-              <ActionForm action={approveTransaction.bind(null, trx.id)} confirmMessage={`Approve ${trx.trx_number}? Stok akan langsung diperbarui.`}>
+              <ActionForm action={approveTransaction.bind(null, trx.id)} confirmMessage={`Approve ${trx.trx_number}? ${isIn ? "Stok barang masuk akan bertambah." : "Stok barang keluar baru berkurang saat Staff menandai Shipped."}`}>
                 <SubmitButton className="btn btn-success" pendingText="Memproses..."><Icon name="check" className="h-4 w-4" /> Approve</SubmitButton>
               </ActionForm>
               <ReasonForm action={rejectTransaction.bind(null, trx.id)} label="Reject" placeholder="cth. Quantity tidak sesuai dokumen" />
@@ -173,7 +173,7 @@ export default async function TransactionDetailPage({ params }) {
                   <InfoRow label="Supplier">{trx.supplier_name} <span className="text-stone-500">({trx.supplier_pic})</span></InfoRow>
                   <InfoRow label="Nomor PO">
                     {trx.po_number ? (
-                      user.role === "staff" ? <span className="sku">{trx.po_number}</span> : <Link href={`/restock/${trx.restock_order_id}`} className="sku font-semibold text-ink underline">{trx.po_number}</Link>
+                      <Link href={`/restock/${trx.restock_order_id}`} className="sku font-semibold text-ink underline">{trx.po_number}</Link>
                     ) : "-"}
                   </InfoRow>
                 </>
