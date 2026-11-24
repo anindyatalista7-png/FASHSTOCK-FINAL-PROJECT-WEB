@@ -18,8 +18,8 @@ export async function GET(request, { params }) {
     [orderId]
   );
   if (!order) return NextResponse.json({ error: "Restock Order tidak ditemukan" }, { status: 404 });
-  if (order.status !== "Received") {
-    return NextResponse.json({ error: `Restock Order berstatus ${order.status}, belum Received` }, { status: 422 });
+  if (order.status !== "Received" && !(order.status === "Inspecting" && (await queryOne("SELECT inspection_result FROM restock_orders WHERE id = $1", [orderId]))?.inspection_result === "Passed")) {
+    return NextResponse.json({ error: `Restock Order berstatus ${order.status}, belum lolos pemeriksaan` }, { status: 422 });
   }
   const used = await queryOne(
     "SELECT trx_number FROM transactions WHERE restock_order_id = $1 AND status <> 'Rejected'",

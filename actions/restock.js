@@ -11,6 +11,7 @@ class UserError extends Error {}
 function refresh(id) {
   revalidatePath("/restock");
   revalidatePath("/dashboard");
+  revalidatePath("/transactions/new");
   if (id) revalidatePath(`/restock/${id}`);
 }
 
@@ -147,25 +148,20 @@ export async function rejectRestockOrder(id, prevState, formData) {
   redirect(withMsg(back, `${po} ditolak.`));
 }
 
-/** Manager: Confirmed -> In Transit -> Received */
 export async function advanceRestockOrder(id, prevState, formData) {
   let user;
   try {
-    user = await assertRole(["manager"]);
+    user = await assertRole(["manager", "supplier"]);
   } catch (err) {
     return fail(err.message);
   }
-  const current = await queryOne("SELECT status FROM restock_orders WHERE id = $1", [id]);
-  if (!current) return fail("Restock order tidak ditemukan.");
-  const flow = {
-    Confirmed: { to: "In Transit", note: "Barang dalam pengiriman" },
-    "In Transit": { to: "Received", note: "Barang diterima di gudang, menunggu pencatatan Barang Masuk" },
-  }[current.status];
-  if (!flow) return fail(`Status ${current.status} tidak dapat dilanjutkan oleh Manager.`);
+  const flow = user.role === "supplier"
+    ? { from: "Confirmed", to: "In Transit", note: "Barang telah dikirim oleh supplier" }
+    : { from: "In Transit", to: "Inspecting", note: "Barang tiba dan menunggu pemeriksaan fisik Staff Gudang" };
 
   let po;
   try {
-    po = await changeStatus({ id, from: current.status, to: flow.to, note: flow.note, actor: user });
+    po = await changeStatus({ id, from: flow.from, to: flow.to, note: flow.note, actor: user, supplierOnly: user.role === "supplier" });
   } catch (err) {
     return fail(err instanceof UserError ? err.message : dbErrorMessage(err));
   }
@@ -194,4 +190,64 @@ export async function rateRestockOrder(id, prevState, formData) {
   refresh(id);
   revalidatePath("/suppliers");
   redirect(withMsg(`/restock/${id}`, `Rating untuk ${row.po_number} tersimpan.`));
+}
+
+export async function submitArrivalPhoto(id, prevState, formData) {
+  let user;
+  try { user = await assertRole(["supplier"]); } catch (err) { return fail(err.message); }
+  const photo = formData.get("arrival_photo");
+  if (!photo || typeof photo.arrayBuffer !== "function" || photo.size === 0) return fail("Foto dokumentasi kedatangan wajib dipilih.");
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(photo.type)) return fail("Gunakan foto JPG, PNG, atau WEBP.");
+  if (photo.size > 4 * 1024 * 1024) return fail("Ukuran foto maksimal 4 MB.");
+  try {
+    const bytes = Buffer.from(await photo.arrayBuffer());
+    await withTransaction(async (client) => {
+      const { rows } = await client.query("SELECT supplier_id, status FROM restock_orders WHERE id = $1 FOR UPDATE", [id]);
+      const order = rows[0];
+      if (!order || order.supplier_id !== user.id || !["In Transit", "Inspecting"].includes(order.status)) throw new UserError("Foto hanya bisa diunggah supplier pemilik PO saat pengiriman atau pemeriksaan.");
+      await client.query("UPDATE restock_orders SET arrival_photo = $1, arrival_photo_mime = $2 WHERE id = $3", [bytes, photo.type, id]);
+    });
+  } catch (err) { return fail(err instanceof UserError ? err.message : dbErrorMessage(err)); }
+  refresh(id);
+  redirect(withMsg(`/restock/${id}`, "Foto dokumentasi kedatangan berhasil disimpan."));
+}
+
+export async function submitInspection(id, prevState, formData) {
+  let user;
+  try { user = await assertRole(["staff"]); } catch (err) { return fail(err.message); }
+  const result = str(formData, "inspection_result");
+  const note = str(formData, "inspection_note");
+  if (!["Passed", "Failed"].includes(result)) return fail("Pilih hasil pemeriksaan barang.");
+  if (note.length < 10 || note.length > 2000) return fail("Laporan pemeriksaan wajib diisi antara 10 sampai 2000 karakter.");
+  try {
+    await withTransaction(async (client) => {
+      const { rows } = await client.query("SELECT status, inspection_result FROM restock_orders WHERE id = $1 FOR UPDATE", [id]);
+      if (!rows[0] || rows[0].status !== "Inspecting") throw new UserError("PO harus berstatus Inspecting.");
+      if (rows[0].inspection_result) throw new UserError("Laporan sudah dikirim dan tidak dapat ditimpa.");
+      await client.query("UPDATE restock_orders SET inspection_result = $1, inspection_note = $2, inspected_by = $3, inspected_at = NOW() WHERE id = $4", [result, note, user.id, id]);
+      await client.query("INSERT INTO restock_status_logs (restock_order_id, status, note, changed_by) VALUES ($1, 'Inspecting', $2, $3)", [id, `Hasil pemeriksaan: ${result}. ${note}`, user.id]);
+    });
+  } catch (err) { return fail(err instanceof UserError ? err.message : dbErrorMessage(err)); }
+  refresh(id);
+  redirect(withMsg(`/restock/${id}`, "Laporan pemeriksaan berhasil dikirim kepada Manager."));
+}
+
+export async function returnRestockOrder(id, prevState, formData) {
+  let user;
+  try { user = await assertRole(["manager"]); } catch (err) { return fail(err.message); }
+  const reason = str(formData, "reason");
+  if (reason.length < 5 || reason.length > 500) return fail("Alasan pengembalian wajib diisi (5–500 karakter).");
+  try {
+    await withTransaction(async (client) => {
+      const { rows } = await client.query("SELECT status, inspection_result FROM restock_orders WHERE id = $1 FOR UPDATE", [id]);
+      if (!rows[0] || rows[0].status !== "Inspecting" || rows[0].inspection_result !== "Failed") throw new UserError("Pengembalian hanya untuk PO dengan laporan pemeriksaan tidak sesuai.");
+      const { rows: incoming } = await client.query("SELECT id, status FROM transactions WHERE restock_order_id = $1 AND status <> 'Rejected' FOR UPDATE", [id]);
+      if (incoming.some(t => t.status !== "Pending")) throw new UserError("Transaksi barang masuk sudah diproses.");
+      for (const t of incoming) await client.query("UPDATE transactions SET status = 'Rejected', reject_reason = $1, reviewed_by = $2, reviewed_at = NOW() WHERE id = $3", [reason, user.id, t.id]);
+      await client.query("UPDATE restock_orders SET status = 'Returned', status_note = $1, refund_status = 'Requested', refund_reason = $1 WHERE id = $2", [reason, id]);
+      await client.query("INSERT INTO restock_status_logs (restock_order_id, status, note, changed_by) VALUES ($1, 'Returned', $2, $3)", [id, reason, user.id]);
+    });
+  } catch (err) { return fail(err instanceof UserError ? err.message : dbErrorMessage(err)); }
+  refresh(id);
+  redirect(withMsg(`/restock/${id}`, "PO ditandai Returned dan klaim refund diajukan. Stok tidak berubah."));
 }

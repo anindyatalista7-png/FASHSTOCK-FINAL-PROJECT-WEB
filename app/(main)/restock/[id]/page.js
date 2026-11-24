@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getRestockOrder } from "@/lib/data";
-import { advanceRestockOrder, confirmRestockOrder, rateRestockOrder, rejectRestockOrder } from "@/actions/restock";
+import { advanceRestockOrder, confirmRestockOrder, rateRestockOrder, rejectRestockOrder, submitArrivalPhoto, submitInspection, returnRestockOrder } from "@/actions/restock";
 import { fmtDate, fmtDateTime, num, rupiah } from "@/lib/format";
 import { Card, InfoRow, PageHeader, RestockStatusBadge, Stars, TrxStatusBadge } from "@/components/ui";
 import ActionForm from "@/components/client/ActionForm";
@@ -13,19 +13,22 @@ import Icon from "@/components/Icon";
 
 export const metadata = { title: "Detail Restock Order" };
 
-const FLOW = ["Pending", "Confirmed", "In Transit", "Received"];
+const FLOW = ["Pending", "Confirmed", "In Transit", "Inspecting", "Received"];
 const STEP_LABEL = {
   Pending: "Order dibuat",
   Confirmed: "Dikonfirmasi supplier",
   "In Transit": "Dalam pengiriman",
-  Received: "Diterima di gudang",
+  Inspecting: "Pemeriksaan fisik barang",
+  Received: "Penerimaan disetujui Manager",
+  Returned: "Barang dikembalikan dan refund diajukan",
   Rejected: "Ditolak supplier",
 };
 
 function Timeline({ order }) {
   const logByStatus = Object.fromEntries(order.logs.map((l) => [l.status, l]));
   const rejected = order.status === "Rejected";
-  const steps = rejected ? ["Pending", "Rejected"] : FLOW;
+  const returned = order.status === "Returned";
+  const steps = rejected ? ["Pending", "Rejected"] : returned ? ["Pending", "Confirmed", "In Transit", "Inspecting", "Returned"] : FLOW;
   const currentIdx = steps.indexOf(order.status);
 
   return (
@@ -35,12 +38,12 @@ function Timeline({ order }) {
         const done = i <= currentIdx;
         const isCurrent = i === currentIdx;
         const last = i === steps.length - 1;
-        const color = s === "Rejected" ? "bg-red-500 text-white" : done ? (isCurrent && s !== "Received" ? "bg-brand-400 text-ink" : "bg-ink text-brand-400") : "bg-stone-200 text-stone-400";
+        const color = ["Rejected", "Returned"].includes(s) ? "bg-red-500 text-white" : done ? (isCurrent && s !== "Received" ? "bg-brand-400 text-ink" : "bg-ink text-brand-400") : "bg-stone-200 text-stone-400";
         return (
           <li key={s} className="relative flex gap-4 pb-7 last:pb-0">
             {!last && <span className={`absolute left-[15px] top-8 h-[calc(100%-1.5rem)] w-0.5 ${i < currentIdx ? "bg-ink" : "bg-stone-200"}`} />}
             <span className={`relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-black ${color}`}>
-              {s === "Rejected" ? "✕" : done && !(isCurrent && s !== "Received") ? "✓" : i + 1}
+              {["Rejected", "Returned"].includes(s) ? "✕" : done && !(isCurrent && s !== "Received") ? "✓" : i + 1}
             </span>
             <div className="pt-1">
               <p className={`text-sm font-bold ${done ? "text-ink" : "text-stone-400"}`}>{s}</p>
@@ -60,13 +63,14 @@ function Timeline({ order }) {
 }
 
 export default async function RestockDetailPage({ params }) {
-  const user = await requireUser(["admin", "manager", "supplier"]);
+  const user = await requireUser(["admin", "manager", "staff", "supplier"]);
   const { id } = await params;
   const order = await getRestockOrder(id);
   if (!order) notFound();
   if (user.role === "supplier" && order.supplier_id !== user.id) redirect("/restock");
 
   const isManager = user.role === "manager";
+  const isStaff = user.role === "staff";
   const isSupplier = user.role === "supplier";
   const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
   const totalValue = order.items.reduce((s, i) => s + i.quantity * i.purchase_price, 0);
@@ -97,23 +101,83 @@ export default async function RestockDetailPage({ params }) {
         </div>
       )}
 
-      {isManager && ["Confirmed", "In Transit"].includes(order.status) && (
+      {((isSupplier && order.status === "Confirmed") || (isManager && order.status === "In Transit")) && (
         <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
           <div>
             <p className="font-bold text-ink">Perbarui status pengiriman</p>
             <p className="text-sm text-stone-500">
-              {order.status === "Confirmed" ? "Tandai In Transit saat barang sudah dikirim oleh supplier." : "Tandai Received saat barang tiba di gudang. Stok bertambah setelah Barang Masuk di-approve."}
+              {isSupplier ? "Tandai In Transit setelah barang dikirim ke gudang." : "Tandai Inspecting saat barang tiba. Staff akan memeriksa kondisi dan jumlah barang."}
             </p>
           </div>
-          <ActionForm action={advanceRestockOrder.bind(null, order.id)} confirmMessage={`Ubah status menjadi ${order.status === "Confirmed" ? "In Transit" : "Received"}?`}>
+          <ActionForm action={advanceRestockOrder.bind(null, order.id)} confirmMessage={`Ubah status menjadi ${isSupplier ? "In Transit" : "Inspecting"}?`}>
             <SubmitButton className="btn btn-primary" pendingText="Memproses...">
-              <Icon name="truck" className="h-4 w-4" /> Tandai {order.status === "Confirmed" ? "In Transit" : "Received"}
+              <Icon name="truck" className="h-4 w-4" /> Tandai {isSupplier ? "In Transit" : "Inspecting"}
             </SubmitButton>
           </ActionForm>
         </div>
       )}
 
-      {order.status === "Received" && !isSupplier && (
+      {isSupplier && ["In Transit", "Inspecting"].includes(order.status) && (
+        <div className="mb-6 rounded-2xl border border-stone-200 bg-white p-5">
+          <p className="font-bold text-ink">Foto dokumentasi kedatangan barang</p>
+          <p className="mt-1 text-sm text-stone-500">Unggah bukti foto JPG, PNG, atau WEBP maksimal 4 MB untuk Manager.</p>
+          <ActionForm action={submitArrivalPhoto.bind(null, order.id)}>
+            <input name="arrival_photo" type="file" accept="image/jpeg,image/png,image/webp" required className="input mt-3" />
+            <SubmitButton className="btn btn-primary mt-3" pendingText="Mengunggah...">Simpan Foto Dokumentasi</SubmitButton>
+          </ActionForm>
+        </div>
+      )}
+
+      {order.arrival_photo_mime && (
+        <div className="mb-6 rounded-2xl border border-stone-200 bg-white p-5">
+          <p className="mb-2 font-bold text-ink">Bukti Foto Kedatangan</p>
+          <a href={`/api/restock/${order.id}/arrival-photo`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-brand-600 underline">Lihat dokumentasi foto barang</a>
+        </div>
+      )}
+
+      {isStaff && order.status === "Inspecting" && !order.inspection_result && (
+        <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5">
+          <p className="font-bold text-ink">Laporan Pemeriksaan Fisik Barang</p>
+          <p className="mt-1 text-sm text-stone-600">Periksa jumlah dan kondisi produk sesuai PO sebelum melaporkan hasilnya.</p>
+          <ActionForm action={submitInspection.bind(null, order.id)}>
+            <label className="label mt-3">Hasil Pemeriksaan</label>
+            <select name="inspection_result" required className="input">
+              <option value="">Pilih hasil</option>
+              <option value="Passed">Sesuai — jumlah dan kondisi baik</option>
+              <option value="Failed">Tidak sesuai / rusak</option>
+            </select>
+            <label className="label mt-3">Laporan jumlah dan kondisi barang</label>
+            <textarea name="inspection_note" required minLength={10} maxLength={2000} rows={4} className="input" placeholder="Jelaskan jumlah yang diperiksa, kondisi fisik, dan ketidaksesuaian jika ada." />
+            <SubmitButton className="btn btn-primary mt-3" pendingText="Mengirim...">Kirim Laporan Pemeriksaan</SubmitButton>
+          </ActionForm>
+        </div>
+      )}
+
+      {order.status === "Inspecting" && order.inspection_result && (
+        <div className="mb-6 rounded-2xl border border-stone-200 bg-white p-5">
+          <p className="font-bold text-ink">Laporan Pemeriksaan: {order.inspection_result === "Passed" ? "Sesuai" : "Tidak Sesuai"}</p>
+          <p className="mt-2 whitespace-pre-line text-sm text-stone-700">{order.inspection_note}</p>
+          {order.inspected_at && <p className="mt-2 text-xs text-stone-500">Diperiksa {fmtDateTime(order.inspected_at)}</p>}
+          {isStaff && order.inspection_result === "Passed" && !activeIncoming && (
+            <Link href={`/transactions/new?type=IN&po=${order.id}`} className="btn btn-primary mt-3">Buat Transaksi Barang Masuk</Link>
+          )}
+          {isManager && order.inspection_result === "Failed" && (
+            <div className="mt-4">
+              <ReasonForm action={returnRestockOrder.bind(null, order.id)} label="Tolak Penerimaan & Ajukan Refund" title="Alasan barang dikembalikan" placeholder="Jelaskan kondisi barang dan alasan refund" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {order.status === "Returned" && (
+        <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
+          <p className="font-bold">Barang Dikembalikan — Refund {order.refund_status === "Requested" ? "Diajukan" : ""}</p>
+          <p className="mt-1">Alasan: {order.refund_reason || order.status_note}</p>
+          <p className="mt-2">Stok tidak bertambah. Manager dapat membuat PO baru jika stok masih dibutuhkan.</p>
+        </div>
+      )}
+
+      {(order.status === "Received" || (order.status === "Inspecting" && order.inspection_result === "Passed")) && !isSupplier && (
         <div className={`mb-6 flex gap-3 rounded-2xl border p-4 text-sm ${activeIncoming ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-sky-200 bg-sky-50 text-sky-900"}`}>
           <Icon name="info" className="mt-0.5 h-5 w-5 shrink-0" />
           {activeIncoming ? (
@@ -122,7 +186,7 @@ export default async function RestockDetailPage({ params }) {
               ({activeIncoming.status}). {activeIncoming.status === "Pending" && "Stok bertambah setelah di-approve Manager."}
             </p>
           ) : (
-            <p>Order sudah Received. Staff Gudang perlu membuat <b>Barang Masuk</b> dengan memilih PO ini agar stok bertambah setelah di-approve.</p>
+            <p>Order telah lolos pemeriksaan atau diterima. Staff Gudang perlu membuat <b>Barang Masuk</b> dengan memilih PO ini agar stok bertambah setelah di-approve.</p>
           )}
         </div>
       )}
