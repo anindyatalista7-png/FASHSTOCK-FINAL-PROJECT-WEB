@@ -1,0 +1,15 @@
+BEGIN;
+SET LOCAL search_path TO fashstock_web, public;
+ALTER TABLE restock_orders DROP CONSTRAINT IF EXISTS restock_orders_status_check;
+ALTER TABLE restock_orders ADD CONSTRAINT restock_orders_status_check CHECK (status IN ('Pending', 'Confirmed', 'Rejected', 'In Transit', 'Inspecting', 'Received', 'Returned'));
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS inspection_result VARCHAR(10);
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS inspection_note TEXT;
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS inspected_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS inspected_at TIMESTAMPTZ;
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS arrival_photo BYTEA;
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS arrival_photo_mime VARCHAR(30);
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS refund_status VARCHAR(20);
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS refund_reason TEXT;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'inspection_result_valid' AND conrelid = 'restock_orders'::regclass) THEN ALTER TABLE restock_orders ADD CONSTRAINT inspection_result_valid CHECK (inspection_result IS NULL OR inspection_result IN ('Passed', 'Failed')); END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'returned_reason_required' AND conrelid = 'restock_orders'::regclass) THEN ALTER TABLE restock_orders ADD CONSTRAINT returned_reason_required CHECK (status <> 'Returned' OR (status_note IS NOT NULL AND LENGTH(TRIM(status_note)) > 0)); END IF; END $$;
+COMMIT;
