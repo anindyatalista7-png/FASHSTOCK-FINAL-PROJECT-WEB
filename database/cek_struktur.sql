@@ -1,6 +1,6 @@
 SELECT current_database() AS database_aktif;
-SELECT table_name, column_name, data_type
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name IN ('users', 'sessions', 'categories', 'products', 'transactions')
-ORDER BY table_name, ordinal_position;
+SELECT table_schema, table_name FROM information_schema.tables
+WHERE table_schema IN ('public','fashstock_web') AND table_type = 'BASE TABLE'
+ORDER BY table_schema, table_name;
+SELECT id, name, company_name, email, role, status
+FROM fashstock_web.users WHERE role = 'supplier' ORDER BY id;
