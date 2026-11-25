@@ -1,3 +1,4 @@
+import AutoFilterForm from "@/components/client/AutoFilterForm";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { listProducts, categoryOptions } from "@/lib/data";
@@ -17,11 +18,10 @@ export default async function ProductsPage({ searchParams }) {
     q: sp.q?.trim() || "",
     category: sp.category || "",
     status: STOCK_STATUSES.includes(sp.status) ? sp.status : "",
-    sort: ["name", "stock", "created"].includes(sp.sort) ? sp.sort : "name",
-    dir: sp.dir === "desc" ? "desc" : "asc",
+    sort: ["name", "stock", "stock_desc", "created", "created_asc"].includes(sp.sort) ? sp.sort : "name",
     page: sp.page || 1,
   };
-  const [{ rows, total, page, totalPages }, categories] = await Promise.all([listProducts(filters), categoryOptions()]);
+  const [{ rows, total, page, totalPages }, categories] = await Promise.all([listProducts({ ...filters, sort: filters.sort.startsWith("stock") ? "stock" : filters.sort.startsWith("created") ? "created" : "name", dir: ["stock_desc", "created"].includes(filters.sort) ? "desc" : "asc" }), categoryOptions()]);
   const manage = can.manageProducts(user);
   const exportQs = new URLSearchParams({ q: filters.q, category: filters.category, status: filters.status }).toString();
 
@@ -53,7 +53,7 @@ export default async function ProductsPage({ searchParams }) {
       {/* Ringkasan status (klik untuk filter) */}
       <div className="mb-4 flex flex-wrap gap-2">
         {["", ...STOCK_STATUSES].map((s) => {
-          const qs = new URLSearchParams({ ...(filters.q && { q: filters.q }), ...(filters.category && { category: filters.category }), ...(s && { status: s }), sort: filters.sort, dir: filters.dir });
+          const qs = new URLSearchParams({ ...(filters.q && { q: filters.q }), ...(filters.category && { category: filters.category }), ...(s && { status: s }), sort: filters.sort });
           const active = filters.status === s;
           return (
             <Link key={s || "all"} href={`/products?${qs}`}
@@ -65,8 +65,8 @@ export default async function ProductsPage({ searchParams }) {
       </div>
 
       <div className="card overflow-hidden">
-        <form className="grid gap-3 border-b border-stone-100 p-4 sm:grid-cols-2 lg:grid-cols-[1fr_180px_160px_150px_120px_auto]" method="GET">
-          <div className="relative sm:col-span-2 lg:col-span-1">
+        <AutoFilterForm className="grid gap-3 border-b border-stone-100 p-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(140px,1fr)_minmax(130px,1fr)_minmax(210px,1fr)_auto]">
+          <div className="relative sm:col-span-2 xl:col-span-1">
             <Icon name="search" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
             <input name="q" defaultValue={filters.q} placeholder="Cari nama atau SKU..." className="input pl-10" />
           </div>
@@ -79,19 +79,16 @@ export default async function ProductsPage({ searchParams }) {
             {STOCK_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <select name="sort" defaultValue={filters.sort} className="input">
-            <option value="name">Urut: Nama</option>
-            <option value="stock">Urut: Stok</option>
-            <option value="created">Urut: Tanggal ditambahkan</option>
-          </select>
-          <select name="dir" defaultValue={filters.dir} className="input">
-            <option value="asc">Naik ↑</option>
-            <option value="desc">Turun ↓</option>
+            <option value="name">Nama A–Z</option>
+            <option value="stock">Stok terendah ke tertinggi</option>
+            <option value="stock_desc">Stok tertinggi ke terendah</option>
+            <option value="created">Tanggal terbaru</option>
+            <option value="created_asc">Tanggal terlama</option>
           </select>
           <div className="flex gap-2">
-            <button className="btn btn-primary flex-1"><Icon name="filter" className="h-4 w-4" /> Terapkan</button>
             <Link href="/products" className="btn btn-ghost">Reset</Link>
           </div>
-        </form>
+        </AutoFilterForm>
 
         {rows.length === 0 ? (
           <EmptyState title="Produk tidak ditemukan" message="Coba ubah kata kunci atau filter." />

@@ -1,3 +1,4 @@
+import AutoFilterForm from "@/components/client/AutoFilterForm";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { listCategories } from "@/lib/data";
@@ -30,13 +31,13 @@ export default async function CategoriesPage({ searchParams }) {
           </>
         }
       />
-      <form method="GET" className="mb-5 flex max-w-md gap-2">
+      <AutoFilterForm className="mb-5 flex max-w-md gap-2">
         <div className="relative flex-1">
           <Icon name="search" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <input name="q" defaultValue={q} placeholder="Cari kategori..." className="input pl-10" />
         </div>
-        <button className="btn btn-primary">Cari</button>
-      </form>
+        <Link href="/categories" className="btn btn-ghost">Reset</Link>
+      </AutoFilterForm>
 
       {categories.length === 0 ? (
         <div className="card"><EmptyState title="Kategori tidak ditemukan" /></div>

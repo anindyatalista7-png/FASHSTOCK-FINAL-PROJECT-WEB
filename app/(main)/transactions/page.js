@@ -1,3 +1,4 @@
+import AutoFilterForm from "@/components/client/AutoFilterForm";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { listTransactions } from "@/lib/data";
@@ -18,17 +19,18 @@ export default async function TransactionsPage({ searchParams }) {
   const filters = {
     type,
     status: statuses.includes(sp.status) ? sp.status : "",
-    from: sp.from || "",
-    to: sp.to || "",
+    from: "",
+    to: "",
     party: sp.party?.trim() || "",
     q: sp.q?.trim() || "",
-    sort: ["date", "number", "created", "status"].includes(sp.sort) ? sp.sort : "date",
-    dir: sp.dir === "asc" ? "asc" : "desc",
+    sort: ["newest", "oldest", "number", "status"].includes(sp.sort) ? sp.sort : "newest",
     mine: sp.mine === "1" ? "1" : "",
     page: sp.page || 1,
   };
   const { rows, total, page, totalPages } = await listTransactions({
     ...filters,
+    sort: ["newest", "oldest"].includes(filters.sort) ? "date" : filters.sort,
+    dir: filters.sort === "newest" ? "desc" : "asc",
     createdBy: filters.mine ? user.id : undefined,
   });
   const exportQs = new URLSearchParams({ type, status: filters.status, from: filters.from, to: filters.to }).toString();
@@ -64,7 +66,7 @@ export default async function TransactionsPage({ searchParams }) {
       </div>
 
       <div className="card overflow-hidden">
-        <form method="GET" className="grid gap-3 border-b border-stone-100 p-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[1fr_1fr_150px_150px_150px_140px_auto]">
+        <AutoFilterForm className="grid gap-3 border-b border-stone-100 p-4 sm:grid-cols-2 xl:grid-cols-3">
           <input type="hidden" name="type" value={type} />
           <input name="q" defaultValue={filters.q} placeholder="No. transaksi" className="input" />
           <input name="party" defaultValue={filters.party} placeholder={type === "IN" ? "Nama supplier" : "Nama customer"} className="input" />
@@ -72,20 +74,15 @@ export default async function TransactionsPage({ searchParams }) {
             <option value="">Semua status</option>
             {statuses.map((s) => <option key={s}>{s}</option>)}
           </select>
-          <input type="date" name="from" defaultValue={filters.from} className="input" title="Dari tanggal" />
-          <input type="date" name="to" defaultValue={filters.to} className="input" title="Sampai tanggal" />
+          <input type="hidden" name="from" value="" />
+          <input type="hidden" name="to" value="" />
           <select name="sort" defaultValue={`${filters.sort}`} className="input">
-            <option value="date">Urut: Tanggal</option>
-            <option value="number">Urut: Nomor</option>
-            <option value="created">Urut: Dibuat</option>
-            <option value="status">Urut: Status</option>
+            <option value="newest">Tanggal terbaru</option>
+            <option value="oldest">Tanggal terlama</option>
+            <option value="number">Nomor transaksi A–Z</option>
+            <option value="status">Status A–Z</option>
           </select>
           <div className="flex gap-2">
-            <select name="dir" defaultValue={filters.dir} className="input w-24">
-              <option value="desc">↓</option>
-              <option value="asc">↑</option>
-            </select>
-            <button className="btn btn-primary"><Icon name="filter" className="h-4 w-4" /></button>
             <Link href={`/transactions?type=${type}`} className="btn btn-ghost">Reset</Link>
           </div>
           {user.role === "staff" && (
@@ -94,7 +91,7 @@ export default async function TransactionsPage({ searchParams }) {
               Hanya transaksi yang saya buat
             </label>
           )}
-        </form>
+        </AutoFilterForm>
 
         {rows.length === 0 ? (
           <EmptyState title="Belum ada transaksi" message="Tidak ada transaksi yang cocok dengan filter." />
