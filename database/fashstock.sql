@@ -10,15 +10,8 @@
 
 BEGIN;
 
-DO $$
-BEGIN
-  IF to_regclass('public.users') IS NOT NULL
-     OR to_regclass('public.products') IS NOT NULL
-     OR to_regclass('public.categories') IS NOT NULL THEN
-    RAISE EXCEPTION 'Database tidak kosong. Gunakan database baru untuk schema FashStock; data lama tidak dihapus.';
-  END IF;
-END
-$$;
+CREATE SCHEMA IF NOT EXISTS fashstock_web;
+SET LOCAL search_path TO fashstock_web, public;
 
 -- ---------------------------------------------------------------------
 -- Fungsi bantu
@@ -136,8 +129,16 @@ CREATE TABLE restock_orders (
   expected_date   DATE         NOT NULL,
   notes           TEXT         NOT NULL,
   status          VARCHAR(20)  NOT NULL DEFAULT 'Pending'
-                  CHECK (status IN ('Pending', 'Confirmed', 'Rejected', 'In Transit', 'Received')),
+                  CHECK (status IN ('Pending', 'Confirmed', 'Rejected', 'In Transit', 'Inspecting', 'Received', 'Returned')),
   status_note     TEXT,
+  inspection_result VARCHAR(10) CHECK (inspection_result IS NULL OR inspection_result IN ('Passed', 'Failed')),
+  inspection_note TEXT,
+  inspected_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  inspected_at TIMESTAMPTZ,
+  arrival_photo BYTEA,
+  arrival_photo_mime VARCHAR(30),
+  refund_status VARCHAR(20),
+  refund_reason TEXT,
   rating          SMALLINT     CHECK (rating BETWEEN 1 AND 5),
   feedback        TEXT,
   rated_at        TIMESTAMPTZ,
@@ -224,15 +225,15 @@ CREATE INDEX idx_trx_items_product ON transaction_items(product_id);
 
 -- Akun Admin, Warehouse Manager, dan Staff Gudang HANYA dibuat lewat file ini.
 INSERT INTO users (id, name, email, password_hash, role, status, company_name, phone, address) VALUES
-  (1, 'Admin Utama',        'admin@gmail.com',    '$2y$10$B9TYvcyhhu3Ng9ZHM4bBB.Hjqi0LByMTBdE0d2ycIT4k27YkB2IZa', 'admin',   'Approved', NULL, '081200000001', 'Kantor Pusat'),
-  (2, 'Budi Manager',       'manager@gmail.com',  '$2y$10$/uHMfYmVAupVUszxLjnWnefzLJbcHT5x8iLJkWZ7c9KGG7PPZ.VNS', 'manager', 'Approved', NULL, '081200000002', 'Gudang Utama'),
-  (3, 'Sari Staff',         'staff@gmail.com',    '$2y$10$EEyqxNypQ7zg9tIL1gerOuwI9PXtA/zY6bV2nglEAu46qO2t9OHq6', 'staff',   'Approved', NULL, '081200000003', 'Gudang Utama'),
-  (4, 'Andi Staff',         'staff2@gmail.com',   '$2y$10$EEyqxNypQ7zg9tIL1gerOuwI9PXtA/zY6bV2nglEAu46qO2t9OHq6', 'staff',   'Approved', NULL, '081200000004', 'Gudang Utama'),
-  (5, 'Rudi Hartono',       'supplier@gmail.com', '$2y$10$bQc5lFh03dqkR4PvA1sY/.8xdguzgdEpCpZa5YWP8IcQu9ZU.1lL2', 'supplier','Approved', 'PT Sumber Makmur', '081300000005', 'Jl. Perintis Kemerdekaan No. 10, Makassar'),
-  (6, 'Linda Wijaya',       'supplier2@gmail.com','$2y$10$bQc5lFh03dqkR4PvA1sY/.8xdguzgdEpCpZa5YWP8IcQu9ZU.1lL2', 'supplier','Approved', 'CV Cahaya Abadi', '081300000006', 'Jl. Urip Sumoharjo No. 45, Makassar'),
-  (7, 'Hendra Saputra',     'pending@gmail.com',  '$2y$10$bQc5lFh03dqkR4PvA1sY/.8xdguzgdEpCpZa5YWP8IcQu9ZU.1lL2', 'supplier','Pending',  'UD Maju Jaya', '081300000007', 'Jl. Sultan Alauddin No. 3, Gowa'),
-  (8, 'Rina Kartika',       'pending2@gmail.com', '$2y$10$bQc5lFh03dqkR4PvA1sY/.8xdguzgdEpCpZa5YWP8IcQu9ZU.1lL2', 'supplier','Pending',  'PT Nusantara Logistik', '081300000008', 'Jl. AP Pettarani No. 88, Makassar'),
-  (9, 'Joko Susilo',        'rejected@gmail.com', '$2y$10$bQc5lFh03dqkR4PvA1sY/.8xdguzgdEpCpZa5YWP8IcQu9ZU.1lL2', 'supplier','Rejected', 'CV Asal Jadi', '081300000009', 'Jl. Veteran No. 1, Maros');
+  (1, 'Admin Utama',        'adminfashstock@gmail.com',    '$2a$10$rrIP4zGpgi4asN4MI4Q9YeKMV/tse8FXVamGFeUaElC2JC7KrlWYq', 'admin',   'Approved', NULL, '081200000001', 'Kantor Pusat'),
+  (2, 'Budi Manager',       'managerfashstock@gmail.com',  '$2a$10$xwT7thTIwfO9p9qqTvtTZO06ceohBziCZk0YiDap2yDlv0dsDsuEK', 'manager', 'Approved', NULL, '081200000002', 'Gudang Utama'),
+  (3, 'Sari Staff',         'stafffashstock@gmail.com',    '$2a$10$qJn84yGsfm7yqj2vDWFKUuWlDEPZ7fdwyQZH5seL4WX7x8EkpPTWK', 'staff',   'Approved', NULL, '081200000003', 'Gudang Utama'),
+  (4, 'Andi Staff',         'staff2@gmail.com',   '$2a$10$qJn84yGsfm7yqj2vDWFKUuWlDEPZ7fdwyQZH5seL4WX7x8EkpPTWK', 'staff',   'Approved', NULL, '081200000004', 'Gudang Utama'),
+  (5, 'Rudi Hartono',       'supplier@gmail.com', '$2a$10$BEaC89xgow00HStDgVNvkO93BQ0mbFqTYwW4FJ8AokVEpMiM/BKdS', 'supplier','Approved', 'PT Sumber Makmur', '081300000005', 'Jl. Perintis Kemerdekaan No. 10, Makassar'),
+  (6, 'Linda Wijaya',       'supplier2@gmail.com','$2a$10$BEaC89xgow00HStDgVNvkO93BQ0mbFqTYwW4FJ8AokVEpMiM/BKdS', 'supplier','Approved', 'CV Cahaya Abadi', '081300000006', 'Jl. Urip Sumoharjo No. 45, Makassar'),
+  (7, 'Hendra Saputra',     'pending@gmail.com',  '$2a$10$BEaC89xgow00HStDgVNvkO93BQ0mbFqTYwW4FJ8AokVEpMiM/BKdS', 'supplier','Pending',  'UD Maju Jaya', '081300000007', 'Jl. Sultan Alauddin No. 3, Gowa'),
+  (8, 'Rina Kartika',       'pending2@gmail.com', '$2a$10$BEaC89xgow00HStDgVNvkO93BQ0mbFqTYwW4FJ8AokVEpMiM/BKdS', 'supplier','Pending',  'PT Nusantara Logistik', '081300000008', 'Jl. AP Pettarani No. 88, Makassar'),
+  (9, 'Joko Susilo',        'rejected@gmail.com', '$2a$10$BEaC89xgow00HStDgVNvkO93BQ0mbFqTYwW4FJ8AokVEpMiM/BKdS', 'supplier','Rejected', 'CV Asal Jadi', '081300000009', 'Jl. Veteran No. 1, Maros');
 SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
 
 INSERT INTO categories (id, name, description) VALUES
