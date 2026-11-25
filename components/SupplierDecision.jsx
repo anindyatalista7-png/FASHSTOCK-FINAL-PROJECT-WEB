@@ -5,6 +5,7 @@ import Icon from "./Icon";
 
 /** Tombol Approve / Reject supplier (dipakai di Dashboard Admin & halaman Supplier). */
 export default function SupplierDecision({ supplier, from, show = ["Approved", "Rejected"] }) {
+  if (supplier.status === "Approved") return null;
   return (
     <div className="flex flex-wrap gap-2">
       {show.includes("Approved") && (
