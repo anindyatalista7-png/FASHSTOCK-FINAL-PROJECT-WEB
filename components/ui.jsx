@@ -133,6 +133,8 @@ const RESTOCK_STYLE = {
   Confirmed: "bg-sky-100 text-sky-700",
   Rejected: "bg-red-100 text-red-700",
   "In Transit": "bg-violet-100 text-violet-700",
+  Inspecting: "bg-orange-100 text-orange-700",
+  Returned: "bg-red-100 text-red-700",
   Received: "bg-emerald-100 text-emerald-700",
 };
 export function RestockStatusBadge({ status }) {
