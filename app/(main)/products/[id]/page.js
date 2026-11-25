@@ -117,7 +117,7 @@ export default async function ProductDetailPage({ params }) {
               <img src={`/api/qr/${encodeURIComponent(product.sku)}`} alt={`QR ${product.sku}`} className="h-24 w-24 shrink-0 rounded-lg border border-stone-200 bg-white p-1" />
               <div className="text-xs text-stone-500">
                 <p className="sku text-sm text-ink">{product.sku}</p>
-                <p className="mt-1">Scan di menu <b>Scan Barcode</b> untuk membuka produk ini dengan cepat.</p>
+                <p className="mt-1">SKU digunakan sebagai identitas unik produk pada label.</p>
               </div>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}

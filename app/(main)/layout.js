@@ -24,13 +24,12 @@ async function buildNav(user) {
     restock: { href: "/restock", label: user.role === "supplier" ? "Restock Order" : "Restock", icon: "truck", count: user.role === "supplier" ? c.supplier_pending : 0 },
     suppliers: { href: "/suppliers", label: "Supplier", icon: "users", count: c.pending_sup },
     history: { href: "/history", label: "Riwayat Transaksi", icon: "history" },
-    scan: { href: "/scan", label: "Scan Barcode", icon: "scan" },
     export: { href: "/export", label: "Ekspor Data", icon: "download" },
   };
   const byRole = {
-    admin: ["dashboard", "products", "categories", "transactions", "restock", "suppliers", "scan", "export"],
-    manager: ["dashboard", "products", "categories", "transactions", "restock", "scan", "export"],
-    staff: ["dashboard", "products", "transactions", "scan", "export"],
+    admin: ["dashboard", "products", "categories", "transactions", "restock", "suppliers", "export"],
+    manager: ["dashboard", "products", "categories", "transactions", "restock", "export"],
+    staff: ["dashboard", "products", "transactions", "restock", "export"],
     supplier: ["dashboard", "restock", "history"],
   };
   return byRole[user.role].map((k) => items[k]);
