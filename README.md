@@ -1,57 +1,30 @@
-# FashStock – Fashion Warehouse Management System
+# FashStock — Sistem Manajemen Gudang Fashion
 
-**Smart Stock. Better Style.**
+Next.js 15, React 19, Tailwind CSS v4, PostgreSQL, `pg`, dan `bcryptjs`.
 
-## 1. Deskripsi Project
+## Persiapan
 
-FashStock merupakan sistem informasi manajemen gudang berbasis web untuk mengelola persediaan berbagai produk fashion, meliputi pakaian, alas kaki, tas, dan aksesori. Sistem ini berfokus pada aktivitas operasional gudang, bukan transaksi penjualan langsung kepada pelanggan.
+1. Backup database PostgreSQL lama di pgAdmin terlebih dahulu.
+2. Buat database **baru dan kosong** bernama `fashstock` di pgAdmin.
+3. Jalankan `database/SETUP-FASHSTOCK.sql` melalui Query Tool database `fashstock`.
+4. File `.env.local` **sudah disertakan** sebagai template. Ganti `GANTI_PASSWORD_POSTGRES` dengan password PostgreSQL di komputermu. Jangan commit `.env.local`.
+5. Jalankan `npm install`, lalu `npm run dev`.
+6. Buka `http://localhost:3000/login`.
 
-Sistem ini berfokus pada pengelolaan kategori dan data produk, variasi ukuran dan warna, pemantauan stok, pencatatan barang masuk dan keluar, serta proses pemesanan ulang barang kepada supplier.
+**Jangan jalankan SQL ini pada `fashstock_db` yang berisi data lama.** Struktur `users.id_user` dari database sebelumnya tidak kompatibel dengan aplikasi ini yang menggunakan `users.id`. SQL menolak berjalan jika tabel utama sudah ada dan tidak melakukan DROP.
 
-Dengan adanya FashStock, proses pengelolaan gudang diharapkan menjadi lebih terstruktur, efektif, dan mudah dipantau.
+## Akun uji
 
-## 2. Tujuan Project
+Lihat `AKUN-DEMO.md` untuk email dan password awal. Semua password seed disimpan sebagai hash bcrypt yang telah diverifikasi terhadap password aslinya. Supplier baru mendaftar melalui `/register` dan berstatus Pending.
 
-- Mempermudah pengelolaan data produk fashion.
-- Memantau jumlah persediaan barang secara terstruktur.
-- Mencatat transaksi barang masuk dan barang keluar.
-- Mengelola proses pemesanan ulang stok kepada supplier.
-- Membantu pengawasan aktivitas gudang berdasarkan hak akses pengguna.
+## Logo
 
-## 3. Teknologi yang Digunakan
+Halaman login menggunakan `public/logo.svg`. ZIP yang diterima tidak memuat file logo final milikmu, sehingga file ini sementara menggunakan ikon FashStock bergaya burgundy. Untuk menggunakan logo aslimu, ganti `public/logo.svg` dengan logo SVG milikmu atau sesuaikan path di `app/(auth)/layout.js` dan `app/(auth)/login/LoginForm.jsx`.
 
-- **Next.js** – Framework pengembangan aplikasi web.
-- **JavaScript (JSX)** – Bahasa pemrograman aplikasi.
-- **Tailwind CSS** – Framework untuk desain antarmuka.
-- **PostgreSQL** – Sistem manajemen basis data.
-- **Git & GitHub** – Pengelolaan versi dan penyimpanan repository project.
+## Fitur
 
-## 4. Role Pengguna
+Produk, kategori, transaksi IN/OUT, persetujuan transaksi, restock, verifikasi supplier, barcode/QR, ekspor, dan dashboard berbasis peran. Kode sumber telah diperiksa konsistensi strukturnya, tetapi pengujian end-to-end dengan PostgreSQL lokal belum dilakukan.
 
-| Role | Hak Akses |
-|---|---|
-| Admin | Mengelola pengguna, memverifikasi supplier, mengelola produk dan kategori, serta memantau sistem. |
-| Warehouse Manager | Mengelola kategori, memantau stok, menyetujui atau menolak transaksi, dan mengelola restock. |
-| Staff Gudang | Mencatat transaksi barang masuk dan barang keluar. |
-| Supplier | Mendaftar akun, melihat pesanan restock, mengonfirmasi atau menolak pesanan, dan melihat riwayat pengiriman. |
+## Catatan keamanan
 
-## 5. Fitur Utama
-
-### A. Manajemen Produk
-- Menambahkan produk fashion.
-- Mengubah dan menghapus data produk.
-- Menampilkan daftar dan
-## 11. Identitas Visual
-
-FashStock menggunakan palet **Dusty Pink, Burgundy, dan Ivory** untuk memberikan kesan fashionable, hangat, dan tetap profesional.
-
-| Peran warna | Nama | Kode |
-|---|---|---|
-| Latar utama | Soft Ivory Pink | `#F8EEEE` |
-| Permukaan kartu | White | `#FFFFFF` |
-| Aksen lembut | Dusty Pink | `#E8C7C8` |
-| Aksen utama | Muted Rose | `#BD858B` |
-| Tombol dan penekanan | Burgundy | `#713E4A` |
-| Teks utama | Deep Charcoal Brown | `#49343A` |
-
-Warna status stok tetap dibedakan dengan hijau untuk Normal, kuning untuk Low, dan merah lembut untuk Severe atau Out of Stock agar informasi operasional mudah dikenali.
+`.env.local` tidak boleh diunggah ke GitHub. Ganti seluruh password demo sebelum deployment. Akun internal dibuat melalui SQL; Supplier mendaftar lewat formulir dan hanya dapat mengakses dashboard setelah Approved.
